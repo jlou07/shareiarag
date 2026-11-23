@@ -1,0 +1,47 @@
+flowchart LR
+    subgraph files["Azure Files"]
+        SA["Share admin"]
+        SB["Share alluser"]
+    end
+
+    subgraph search["Azure AI Search"]
+        direction LR
+        subgraph ingest["Ingestion pipeline (one per share)"]
+            DSA["Data source<br/>af-ds-admin"]
+            DSB["Data source<br/>af-ds-alluser"]
+            SKA["Skillset<br/>af-skills-all-admin<br/>chunking + embedding<br/>(text-embedding-3-small)<br/>+ group_ids = Group A"]
+            SKB["Skillset<br/>af-skills-all-alluser<br/>chunking + embedding<br/>(text-embedding-3-small)<br/>+ group_ids = Group B"]
+            IXA["Indexer<br/>af-indexer-all-admin<br/>every 5 min"]
+            IXB["Indexer<br/>af-indexer-all-alluser<br/>every 5 min"]
+        end
+
+        subgraph indexes["Indexes"]
+            IDX["Active index<br/>af-index-all<br/>chunks + vectors + group_ids<br/>(permission filter enabled)"]
+            IDXB["Standby index<br/>af-index-all-b<br/>created only by a full rebuild"]
+        end
+
+        KS["Knowledge source<br/>af-ks-all<br/>(kind: searchIndex)"]
+        KB["Knowledge base<br/>af-kb-all<br/>model: gpt-5-mini<br/>output: extractiveData"]
+    end
+
+    subgraph consumers["Consumers"]
+        MCP["Custom MCP server<br/>(Copilot connector)<br/>/retrieve + user token"]
+        AG["Foundry agent<br/>native /mcp endpoint"]
+    end
+
+    SA --> DSA
+    SB --> DSB
+    DSA --> IXA
+    DSB --> IXB
+    SKA -. used by .-> IXA
+    SKB -. used by .-> IXB
+    IXA --> IDX
+    IXB --> IDX
+    IDX -->|read by| KS
+    IDXB -. "switch after rebuild" .-> KS
+    KS --> KB
+    KB --> MCP
+    KB --> AG
+
+    classDef standby stroke-dasharray: 5 5,color:#666
+    class IDXB standby

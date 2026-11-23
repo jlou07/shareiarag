@@ -1,0 +1,7 @@
+flowchart LR
+    subgraph index["Index af-index-all"]
+        D1["admin-test.txt<br/>group_ids = [Group A]"]
+        D2["alluser-test.txt<br/>group_ids = [Group B]"]
+    end
+    QA["Query with User A's token<br/>(member of Group A)"] --> index
+    index --> RA["Result:<br/>admin-test.txt<br/>only"]

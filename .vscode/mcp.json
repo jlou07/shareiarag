@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "shareiarag-documents": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${workspaceFolder}/mcp-proto/server.py", "--stdio"],
+      "env": { "ALLOW_AZ_CLI_TOKEN": "1" }
+    }
+  }
+}

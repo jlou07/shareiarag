@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor A as User A
+    participant C as Console / Copilot
+    participant E as Entra ID
+    participant M as MCP server
+    participant S as Azure AI Search
+    A->>C: Question
+    C->>E: Request token for api://mcp/access_as_user
+    E-->>C: Access token (aud = MCP)
+    C->>M: search(query) + token
+    M->>M: Validate audience, issuer and authorized client
+    M->>E: OBO: user token + federated client assertion
+    E-->>M: Search token on behalf of User A
+    M->>S: Query + app token + delegated user token
+    S-->>M: Documents filtered by group
+    M-->>C: Results + links

@@ -1,0 +1,2 @@
+Document de test synthetique pour le groupe B.
+Code de verification : BRAVO-9631.

@@ -1,0 +1,621 @@
+# Run requests individually with REST Client.
+# Variables are read from the .env file in the same folder. No API key is used:
+#   SEARCH_TOKEN  = az account get-access-token --resource https://search.azure.com --query accessToken -o tsv
+#                   (short-lived; paste it only for the session, never commit it)
+#   Embeddings use the Search service managed identity (no Azure OpenAI key).
+#   FILES_CONNECTION_STRING: Azure Files indexers still require an account-key connection
+#   string. Read it from Key Vault secret files-connection-shareiarag only when running
+#   requests 1/8, then remove it from .env.
+#
+# The production index is now managed by the console; this file is kept for reference.
+# Legacy per-share indexes without permission filtering were removed from this file.
+
+### 1. admin - Create or update the admin-share data source
+PUT {{$dotenv SEARCH_ENDPOINT}}/datasources/af-ds-admin?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-ds-admin",
+  "type": "azurefile",
+  "credentials": {
+    "connectionString": "{{$dotenv FILES_CONNECTION_STRING}}"
+  },
+  "container": {
+    "name": "admin-share"
+  }
+}
+
+### 8. alluser - Create or update the alluser-share data source
+PUT {{$dotenv SEARCH_ENDPOINT}}/datasources/af-ds-alluser?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-ds-alluser",
+  "type": "azurefile",
+  "credentials": {
+    "connectionString": "{{$dotenv FILES_CONNECTION_STRING}}"
+  },
+  "container": {
+    "name": "alluser-share"
+  }
+}
+
+###
+# ===================================================================
+# UNIFIED INDEX WITH ENTRA GROUP FILTERING (one agent)
+# Both shares are indexed into af-index-all; each chunk contains the GUID
+# of its allowed Entra group (group_ids field, permissionFilter groupIds).
+# Data sources af-ds-admin / af-ds-alluser (requests 1 and 8) are reused.
+# ===================================================================
+
+### 19. all - Unified index with the group_ids permission field
+PUT {{$dotenv SEARCH_ENDPOINT}}/indexes/af-index-all?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-index-all",
+  "permissionFilterOption": "enabled",
+  "fields": [
+    {
+      "name": "chunk_id",
+      "type": "Edm.String",
+      "key": true,
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "parent_id",
+      "type": "Edm.String",
+      "filterable": true
+    },
+    {
+      "name": "title",
+      "type": "Edm.String",
+      "searchable": true,
+      "retrievable": true
+    },
+    {
+      "name": "metadata_storage_path",
+      "type": "Edm.String",
+      "filterable": true,
+      "retrievable": true
+    },
+    {
+      "name": "share",
+      "type": "Edm.String",
+      "filterable": true,
+      "retrievable": true
+    },
+    {
+      "name": "group_ids",
+      "type": "Collection(Edm.String)",
+      "permissionFilter": "groupIds",
+      "filterable": true,
+      "retrievable": true
+    },
+    {
+      "name": "chunk",
+      "type": "Edm.String",
+      "searchable": true,
+      "retrievable": true,
+      "analyzer": "fr.microsoft"
+    },
+    {
+      "name": "text_vector",
+      "type": "Collection(Edm.Single)",
+      "searchable": true,
+      "dimensions": 1536,
+      "vectorSearchProfile": "vprof"
+    }
+  ],
+  "vectorSearch": {
+    "algorithms": [
+      {
+        "name": "hnsw",
+        "kind": "hnsw"
+      }
+    ],
+    "vectorizers": [
+      {
+        "name": "aoai-vectorizer",
+        "kind": "azureOpenAI",
+        "azureOpenAIParameters": {
+          "resourceUri": "{{$dotenv AOAI_ENDPOINT}}",
+          "deploymentId": "{{$dotenv AOAI_EMBEDDING_DEPLOYMENT}}",
+          "modelName": "text-embedding-3-small"
+        }
+      }
+    ],
+    "profiles": [
+      {
+        "name": "vprof",
+        "algorithm": "hnsw",
+        "vectorizer": "aoai-vectorizer"
+      }
+    ]
+  },
+  "semantic": {
+    "defaultConfiguration": "sem",
+    "configurations": [
+      {
+        "name": "sem",
+        "prioritizedFields": {
+          "titleField": {
+            "fieldName": "title"
+          },
+          "prioritizedContentFields": [
+            {
+              "fieldName": "chunk"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+### 20. all/admin - Skillset (admin-share -> AAD DC Administrators group)
+PUT {{$dotenv SEARCH_ENDPOINT}}/skillsets/af-skills-all-admin?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-skills-all-admin",
+  "skills": [
+    {
+      "@odata.type": "#Microsoft.Skills.Text.SplitSkill",
+      "name": "split",
+      "context": "/document",
+      "defaultLanguageCode": "fr",
+      "textSplitMode": "pages",
+      "maximumPageLength": 2000,
+      "pageOverlapLength": 400,
+      "inputs": [
+        {
+          "name": "text",
+          "source": "/document/content"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "textItems",
+          "targetName": "pages"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Util.ConditionalSkill",
+      "name": "group-id",
+      "context": "/document",
+      "inputs": [
+        {
+          "name": "condition",
+          "source": "= true"
+        },
+        {
+          "name": "whenTrue",
+          "source": "= '{{$dotenv ADMIN_GROUP_ID}}'"
+        },
+        {
+          "name": "whenFalse",
+          "source": "= 'none'"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "targetName": "group_id"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Text.SplitSkill",
+      "name": "group-ids-array",
+      "description": "Convert the group GUID to a one-element array for the group_ids collection field.",
+      "context": "/document",
+      "textSplitMode": "pages",
+      "maximumPageLength": 2000,
+      "inputs": [
+        {
+          "name": "text",
+          "source": "/document/group_id"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "textItems",
+          "targetName": "group_ids"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Util.ConditionalSkill",
+      "name": "share-name",
+      "context": "/document",
+      "inputs": [
+        {
+          "name": "condition",
+          "source": "= true"
+        },
+        {
+          "name": "whenTrue",
+          "source": "= 'admin-share'"
+        },
+        {
+          "name": "whenFalse",
+          "source": "= null"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "targetName": "share"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
+      "name": "embedding",
+      "context": "/document/pages/*",
+      "resourceUri": "{{$dotenv AOAI_ENDPOINT}}",
+      "deploymentId": "{{$dotenv AOAI_EMBEDDING_DEPLOYMENT}}",
+      "modelName": "text-embedding-3-small",
+      "dimensions": 1536,
+      "inputs": [
+        {
+          "name": "text",
+          "source": "/document/pages/*"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "embedding",
+          "targetName": "text_vector"
+        }
+      ]
+    }
+  ],
+  "indexProjections": {
+    "selectors": [
+      {
+        "targetIndexName": "af-index-all",
+        "parentKeyFieldName": "parent_id",
+        "sourceContext": "/document/pages/*",
+        "mappings": [
+          {
+            "name": "chunk",
+            "source": "/document/pages/*"
+          },
+          {
+            "name": "text_vector",
+            "source": "/document/pages/*/text_vector"
+          },
+          {
+            "name": "title",
+            "source": "/document/metadata_storage_path"
+          },
+          {
+            "name": "metadata_storage_path",
+            "source": "/document/metadata_storage_path"
+          },
+          {
+            "name": "share",
+            "source": "/document/share"
+          },
+          {
+            "name": "group_ids",
+            "source": "/document/group_ids"
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "projectionMode": "skipIndexingParentDocuments"
+    }
+  }
+}
+
+### 21. all/admin - Indexer targeting af-index-all (runs every five minutes)
+PUT {{$dotenv SEARCH_ENDPOINT}}/indexers/af-indexer-all-admin?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-indexer-all-admin",
+  "dataSourceName": "af-ds-admin",
+  "targetIndexName": "af-index-all",
+  "skillsetName": "af-skills-all-admin",
+  "schedule": {
+    "interval": "PT5M"
+  },
+  "parameters": {
+    "configuration": {
+      "dataToExtract": "contentAndMetadata"
+    }
+  }
+}
+
+### 22. all/admin - Status
+GET {{$dotenv SEARCH_ENDPOINT}}/indexers/af-indexer-all-admin/status?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+
+### 23. all/admin - Run again
+POST {{$dotenv SEARCH_ENDPOINT}}/indexers/af-indexer-all-admin/run?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+
+### 24. all/alluser - Skillset (alluser-share -> AVD-GRP2 group)
+PUT {{$dotenv SEARCH_ENDPOINT}}/skillsets/af-skills-all-alluser?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-skills-all-alluser",
+  "skills": [
+    {
+      "@odata.type": "#Microsoft.Skills.Text.SplitSkill",
+      "name": "split",
+      "context": "/document",
+      "defaultLanguageCode": "fr",
+      "textSplitMode": "pages",
+      "maximumPageLength": 2000,
+      "pageOverlapLength": 400,
+      "inputs": [
+        {
+          "name": "text",
+          "source": "/document/content"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "textItems",
+          "targetName": "pages"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Util.ConditionalSkill",
+      "name": "group-id",
+      "context": "/document",
+      "inputs": [
+        {
+          "name": "condition",
+          "source": "= true"
+        },
+        {
+          "name": "whenTrue",
+          "source": "= '{{$dotenv ALLUSER_GROUP_ID}}'"
+        },
+        {
+          "name": "whenFalse",
+          "source": "= 'none'"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "targetName": "group_id"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Text.SplitSkill",
+      "name": "group-ids-array",
+      "description": "Convert the group GUID to a one-element array for the group_ids collection field.",
+      "context": "/document",
+      "textSplitMode": "pages",
+      "maximumPageLength": 2000,
+      "inputs": [
+        {
+          "name": "text",
+          "source": "/document/group_id"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "textItems",
+          "targetName": "group_ids"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Util.ConditionalSkill",
+      "name": "share-name",
+      "context": "/document",
+      "inputs": [
+        {
+          "name": "condition",
+          "source": "= true"
+        },
+        {
+          "name": "whenTrue",
+          "source": "= 'alluser-share'"
+        },
+        {
+          "name": "whenFalse",
+          "source": "= null"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "targetName": "share"
+        }
+      ]
+    },
+    {
+      "@odata.type": "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
+      "name": "embedding",
+      "context": "/document/pages/*",
+      "resourceUri": "{{$dotenv AOAI_ENDPOINT}}",
+      "deploymentId": "{{$dotenv AOAI_EMBEDDING_DEPLOYMENT}}",
+      "modelName": "text-embedding-3-small",
+      "dimensions": 1536,
+      "inputs": [
+        {
+          "name": "text",
+          "source": "/document/pages/*"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "embedding",
+          "targetName": "text_vector"
+        }
+      ]
+    }
+  ],
+  "indexProjections": {
+    "selectors": [
+      {
+        "targetIndexName": "af-index-all",
+        "parentKeyFieldName": "parent_id",
+        "sourceContext": "/document/pages/*",
+        "mappings": [
+          {
+            "name": "chunk",
+            "source": "/document/pages/*"
+          },
+          {
+            "name": "text_vector",
+            "source": "/document/pages/*/text_vector"
+          },
+          {
+            "name": "title",
+            "source": "/document/metadata_storage_path"
+          },
+          {
+            "name": "metadata_storage_path",
+            "source": "/document/metadata_storage_path"
+          },
+          {
+            "name": "share",
+            "source": "/document/share"
+          },
+          {
+            "name": "group_ids",
+            "source": "/document/group_ids"
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "projectionMode": "skipIndexingParentDocuments"
+    }
+  }
+}
+
+### 25. all/alluser - Indexer targeting af-index-all (runs every five minutes)
+PUT {{$dotenv SEARCH_ENDPOINT}}/indexers/af-indexer-all-alluser?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-indexer-all-alluser",
+  "dataSourceName": "af-ds-alluser",
+  "targetIndexName": "af-index-all",
+  "skillsetName": "af-skills-all-alluser",
+  "schedule": {
+    "interval": "PT5M"
+  },
+  "parameters": {
+    "configuration": {
+      "dataToExtract": "contentAndMetadata"
+    }
+  }
+}
+
+### 26. all/alluser - Status
+GET {{$dotenv SEARCH_ENDPOINT}}/indexers/af-indexer-all-alluser/status?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+
+### 27. all/alluser - Run again
+POST {{$dotenv SEARCH_ENDPOINT}}/indexers/af-indexer-all-alluser/run?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+
+### 28. all - Verify content and groups (no user token = no results)
+POST {{$dotenv SEARCH_ENDPOINT}}/indexes/af-index-all/docs/search?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "search": "*",
+  "select": "title,share,group_ids",
+  "facets": [
+    "share"
+  ],
+  "count": true,
+  "top": 5
+}
+
+### 29. all - Unified knowledge source
+PUT {{$dotenv SEARCH_ENDPOINT}}/knowledgesources/af-ks-all?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-ks-all",
+  "kind": "searchIndex",
+  "description": "Documents from admin-share and alluser-share, filtered by the user's Entra groups.",
+  "searchIndexParameters": {
+    "searchIndexName": "af-index-all",
+    "semanticConfigurationName": "sem",
+    "searchFields": [
+      {
+        "name": "chunk"
+      },
+      {
+        "name": "title"
+      }
+    ],
+    "sourceDataFields": [
+      {
+        "name": "title"
+      },
+      {
+        "name": "chunk"
+      },
+      {
+        "name": "metadata_storage_path"
+      },
+      {
+        "name": "share"
+      }
+    ]
+  }
+}
+
+### 30. all - Unified knowledge base (used by the agent)
+PUT {{$dotenv SEARCH_ENDPOINT}}/knowledgebases/af-kb-all?api-version=2026-08-01-preview
+Authorization: Bearer {{$dotenv SEARCH_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "af-kb-all",
+  "description": "Unified Foundry IQ knowledge base with results filtered by the user's Entra groups.",
+  "retrievalInstructions": "Retrieve relevant passages for the user's question, including when the question and documents use different languages. Do not invent facts. If no relevant evidence is available, state this clearly in English.",
+  "answerInstructions": "Answer in English and cite the supplied sources. Only include facts supported by the retrieved passages.",
+  "knowledgeSources": [
+    {
+      "name": "af-ks-all"
+    }
+  ],
+  "models": [
+    {
+      "kind": "azureOpenAI",
+      "azureOpenAIParameters": {
+        "resourceUri": "{{$dotenv AOAI_ENDPOINT}}",
+        "deploymentId": "gpt-5-mini",
+        "modelName": "gpt-5-mini"
+      }
+    }
+  ],
+  "retrievalReasoningEffort": {
+    "kind": "low"
+  },
+  "outputMode": "extractiveData"
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "entraClientId": { "value": "<mcp-entra-client-id>" },
+    "tokenAudiences": { "value": "<mcp-entra-client-id>,api://<mcp-entra-client-id>" },
+    "allowedClientIds": { "value": "<client-id-1>,<client-id-2>" },
+    "requiredScope": { "value": "access_as_user" },
+    "deployerObjectId": { "value": "<deployer-object-id>" },
+    "createdAt": { "value": "<keep the first deployment timestamp to avoid tag drift>" },
+    "onboardSessionId": { "value": "" },
+    "deployedBy": { "value": "" }
+  }
+}

@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>shareiarag – Architecture, features et étapes IA</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.5;
+}
+header, main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+header h1 { margin: 0 0 4px; font-size: 1.6rem; }
+header p { margin: 0; color: var(--cp-text-muted); }
+nav { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+nav a {
+  padding: 6px 12px; border-radius: 0.625rem; border: 1px solid var(--cp-border);
+  background: var(--cp-surface); color: var(--cp-text); text-decoration: none; font-size: 0.9rem;
+}
+nav a:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+section {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px;
+  box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
+  padding: 20px 24px; margin-bottom: 24px;
+}
+section h2 { margin: 0 0 4px; font-size: 1.25rem; }
+section > p.lead { margin: 0 0 16px; color: var(--cp-text-muted); }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--cp-text-muted); margin-bottom: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 4px; border: 2px solid var(--cp-border-strong); background: var(--cp-surface-soft); }
+.sw.ai { background: var(--cp-accent); border-color: var(--cp-accent); }
+.sw.sec { background: var(--cp-surface); border-color: var(--cp-warning); }
+.diagram { overflow-x: auto; padding: 8px 0; }
+.diagram svg { max-width: 100%; height: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--cp-border); vertical-align: top; }
+th { color: var(--cp-text-muted); font-weight: 600; background: var(--cp-surface-soft); }
+code { font-family: Consolas, "Courier New", Courier, monospace; font-size: 0.85em;
+  background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 6px; padding: 0 4px; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+.tag.ai { background: var(--cp-accent); color: var(--cp-accent-fg); }
+.tag.no { background: var(--cp-surface-soft); color: var(--cp-text-muted); border: 1px solid var(--cp-border); }
+ol.steps { margin: 0; padding-left: 20px; }
+ol.steps li { margin-bottom: 6px; }
+.note { color: var(--cp-text-muted); font-size: 0.88rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>shareiarag — Document Assistant</h1>
+  <p>Assistant RAG sur Azure Files : indexation automatique, recherche filtrée par groupe Entra, agent Foundry publié dans Teams / Microsoft 365 Copilot, ouverture sécurisée des fichiers.</p>
+  <nav>
+    <a href="#archi">1. Vue d'ensemble</a>
+    <a href="#index">2. Pipeline d'indexation</a>
+    <a href="#question">3. Parcours d'une question</a>
+    <a href="#file">4. Ouverture d'un fichier</a>
+    <a href="#features">5. Features ↔ services</a>
+    <a href="#ai">6. Étapes IA</a>
+  </nav>
+</header>
+
+<main>
+  <section id="archi">
+    <h2>1. Vue d'ensemble</h2>
+    <p class="lead">Les trois flux de l'app : indexation (en bas), question/réponse (au centre), ouverture de fichier (à droite).</p>
+    <div class="legend">
+      <span><i class="sw ai"></i> Étape IA (modèle)</span>
+      <span><i class="sw sec"></i> Contrôle d'accès / sécurité</span>
+      <span><i class="sw"></i> Service / stockage</span>
+    </div>
+    <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph USERS["👤 Utilisateurs (tenant Entra)"]
+    U1["Teams / M365 Copilot<br/>app « Document Assistant » 1.0.2"]
+    U2["Foundry playground<br/>(clients Entra)"]
+  end
+
+  subgraph FOUNDRY["Microsoft Foundry · aif-shareiarag / proj-shareiarag"]
+    AG["🤖 Agent agent-shareiarag<br/>gpt-5-mini + agent-instructions.txt"]:::ai
+    MCP["Connexion MCP<br/>af-kb-all-mcp"]
+    M1[("gpt-5-mini<br/>GlobalStandard")]:::ai
+    M2[("text-embedding-3-small<br/>1536 dims")]:::ai
+  end
+
+  subgraph SEARCH["Azure AI Search · srch-shareiarag (Foundry IQ)"]
+    KB["Knowledge base af-kb-all<br/>planification de requêtes (low)"]:::ai
+    KS["Knowledge source af-ks-all"]
+    IDX[("Index af-index-all<br/>vecteur + texte fr + sémantique<br/>group_ids = filtre permission")]:::sec
+    IXR["Indexers af-indexer-all-admin / -alluser<br/>toutes les 5 min"]
+    SK["Skillsets<br/>split · groupe · embedding"]:::ai
+  end
+
+  subgraph STORAGE["Storage shareiarag · Azure Files (SMB)"]
+    S1[("admin-share<br/>→ AAD DC Administrators")]
+    S2[("alluser-share<br/>→ AVD-GRP2")]
+  end
+
+  FN["Function func-shareiarag-dl<br/>/api/f/&lt;share&gt;/&lt;chemin&gt;<br/>Entra auth + check groupe"]:::sec
+  OO["Navigateur / Office Online"]
+
+  U1 -- "question + identité utilisateur (OBO)" --> AG
+  U2 --> AG
+  AG -- "tool knowledge_base_retrieve" --> MCP --> KB
+  KB --> KS --> IDX
+  KB -. "planif. / reformulation" .-> M1
+  AG -. "rédaction réponse" .-> M1
+  IDX -. "vectorisation requête" .-> M2
+
+  S1 & S2 --> IXR --> SK --> IDX
+  SK -. "embeddings des chunks" .-> M2
+
+  AG -- "réponse + citations + 📂 liens" --> U1
+  U1 -- "clic lien fichier" --> FN
+  FN -- "SAS lecture 5 min (302)" --> S1 & S2
+  FN --> OO
+
+  classDef ai fill:AI_FILL,stroke:AI_FILL,color:AI_FG
+  classDef sec fill:SURF,stroke:WARN,stroke-width:2px,color:TXT
+</pre></div>
+  </section>
+
+  <section id="index">
+    <h2>2. Pipeline d'indexation (automatique, toutes les 5 min)</h2>
+    <p class="lead">Chaque fichier des partages est découpé en chunks, tagué avec le GUID du groupe Entra autorisé, vectorisé, puis indexé.</p>
+    <div class="diagram"><pre class="mermaid">
+flowchart LR
+  F[("Fichier dans<br/>admin-share / alluser-share")] --> DS["Data source<br/>af-ds-admin / af-ds-alluser<br/>(type azurefile)"]
+  DS --> IX["Indexer af-indexer-all-*<br/>schedule PT5M · incrémental<br/>contentAndMetadata"]
+  IX --> CR["Document cracking<br/>extraction texte + métadonnées"]
+  CR --> SP["SplitSkill<br/>pages 2000 car. · overlap 400"]
+  CR --> CO["ConditionalSkill<br/>injecte le GUID du groupe du share"]
+  CO --> SP2["SplitSkill<br/>GUID → tableau group_ids"]
+  SP --> EM["AzureOpenAIEmbeddingSkill<br/>text-embedding-3-small"]:::ai
+  EM --> PJ["Index projections<br/>1 doc d'index par chunk"]
+  SP2 --> PJ
+  PJ --> IDX[("af-index-all<br/>chunk · vecteur 1536 · title=URL source<br/>group_ids (permissionFilter)")]:::sec
+
+  classDef ai fill:AI_FILL,stroke:AI_FILL,color:AI_FG
+  classDef sec fill:SURF,stroke:WARN,stroke-width:2px,color:TXT
+</pre></div>
+    <p class="note">Limites : suppression de fichiers non détectée ; filtrage par groupe du share (pas les ACL NTFS) ; nouveau fichier visible après le prochain run + traitement.</p>
+  </section>
+
+  <section id="question">
+    <h2>3. Parcours d'une question (RAG agentique)</h2>
+    <p class="lead">Les étapes en rose sont faites par un modèle IA.</p>
+    <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as Utilisateur (Teams / Copilot)
+  participant A as Agent Foundry<br/>agent-shareiarag
+  participant L as gpt-5-mini
+  participant K as Knowledge base<br/>af-kb-all
+  participant I as Index af-index-all
+  participant E as text-embedding-3-small
+
+  U->>A: Question (FR ou EN) + jeton utilisateur (OBO)
+  rect AI_SOFT
+    A->>L: 🧠 IA : décide d'appeler knowledge_base_retrieve
+  end
+  A->>K: retrieve (via MCP af-kb-all-mcp) + identité utilisateur
+  rect AI_SOFT
+    K->>L: 🧠 IA : planification (effort low)<br/>reformule / découpe en sous-requêtes, cross-langue
+  end
+  rect AI_SOFT
+    K->>E: 🧠 IA : vectorise les sous-requêtes
+  end
+  K->>I: Recherche hybride (vecteur HNSW + mots-clés fr.microsoft)<br/>+ filtre group_ids ∈ groupes de l'utilisateur
+  rect AI_SOFT
+    I->>I: 🧠 IA : semantic ranker (config « sem ») re-classe les chunks
+  end
+  I-->>K: Chunks autorisés uniquement
+  K-->>A: extractiveData (passages + références)
+  rect AI_SOFT
+    A->>L: 🧠 IA : rédige la réponse en anglais,<br/>citations 【…】, règle « no-answer »
+  end
+  A->>A: Construit « 📂 Open files » : URL source → func-shareiarag-dl/api/f/…
+  A-->>U: Réponse + citations + liens fichiers
+</pre></div>
+    <p class="note">Sans jeton utilisateur (clé admin seule) → 0 résultat. Un membre d'un seul groupe ne voit que son share.</p>
+  </section>
+
+  <section id="file">
+    <h2>4. Ouverture d'un fichier depuis un lien</h2>
+    <p class="lead">Aucune IA ici : contrôle d'accès puis redirection vers une URL temporaire.</p>
+    <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as Utilisateur
+  participant F as Function func-shareiarag-dl
+  participant EA as App Service Auth (Entra)
+  participant S as Azure Files
+  participant O as Office Online
+
+  U->>F: GET /api/f/admin-share/dossier/facture.pdf
+  F->>EA: Authentification Entra
+  EA-->>F: x-ms-client-principal (claims groups)
+  alt Groupe du share ∉ groupes utilisateur
+    F-->>U: 403 Access to this share is denied.
+  else Autorisé
+    F->>F: Génère SAS lecture seule, 5 min, inline
+    alt Fichier Office (.docx/.xlsx/.pptx…)
+      F-->>U: 302 → view.officeapps.live.com?src=SAS
+      U->>O: Ouvre le viewer
+      O->>S: Lit le fichier via SAS
+    else PDF / image / texte
+      F-->>U: 302 → URL SAS
+      U->>S: Le navigateur affiche le fichier
+    end
+  end
+</pre></div>
+  </section>
+
+  <section id="features">
+    <h2>5. Features ↔ services</h2>
+    <table>
+      <thead><tr><th>Feature</th><th>Services Azure</th><th>IA ?</th></tr></thead>
+      <tbody>
+        <tr><td>Stockage des documents</td><td>Storage <code>shareiarag</code> (Azure Files SMB, <code>admin-share</code>, <code>alluser-share</code>)</td><td><span class="tag no">Non</span></td></tr>
+        <tr><td>Indexation auto toutes les 5 min</td><td>AI Search : data sources, indexers, skillsets</td><td><span class="tag ai">Oui</span> embeddings</td></tr>
+        <tr><td>Découpage en chunks</td><td>AI Search <code>SplitSkill</code></td><td><span class="tag no">Non</span></td></tr>
+        <tr><td>Recherche sémantique / vectorielle</td><td>AI Search index <code>af-index-all</code> + vectorizer Azure OpenAI + semantic ranker</td><td><span class="tag ai">Oui</span></td></tr>
+        <tr><td>Sécurité par groupe Entra</td><td>AI Search <code>permissionFilter: groupIds</code> + OBO utilisateur</td><td><span class="tag no">Non</span></td></tr>
+        <tr><td>Recherche agentique (Foundry IQ)</td><td>Knowledge base <code>af-kb-all</code> + knowledge source <code>af-ks-all</code> + <code>gpt-5-mini</code></td><td><span class="tag ai">Oui</span> planification</td></tr>
+        <tr><td>Assistant conversationnel</td><td>Foundry agent <code>agent-shareiarag</code> + connexion MCP <code>af-kb-all-mcp</code></td><td><span class="tag ai">Oui</span> génération</td></tr>
+        <tr><td>Réponses en anglais + citations + no-answer</td><td><code>agent-instructions.txt</code> + answerInstructions KB</td><td><span class="tag ai">Oui</span></td></tr>
+        <tr><td>Disponible dans Teams / M365 Copilot</td><td>Publication Foundry → Microsoft 365 (Bot Service tenant)</td><td><span class="tag no">Non</span></td></tr>
+        <tr><td>Liens « 📂 Open files » cliquables</td><td>Azure Function <code>func-shareiarag-dl</code> (Entra auth, SAS 5 min, Office Online)</td><td><span class="tag no">Non</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="ai">
+    <h2>6. Les étapes IA, dans l'ordre</h2>
+    <ol class="steps">
+      <li><strong>Embedding des chunks</strong> (indexation) — <code>text-embedding-3-small</code> transforme chaque chunk de 2000 caractères en vecteur 1536 dims.</li>
+      <li><strong>Choix de l'outil</strong> — l'agent <code>gpt-5-mini</code> décide d'appeler <code>knowledge_base_retrieve</code> (obligatoire pour toute question documentaire).</li>
+      <li><strong>Planification de la recherche</strong> — la knowledge base utilise <code>gpt-5-mini</code> (effort <em>low</em>) pour reformuler / découper la question, y compris FR ↔ EN.</li>
+      <li><strong>Vectorisation de la requête</strong> — le vectorizer de l'index appelle <code>text-embedding-3-small</code>.</li>
+      <li><strong>Re-classement sémantique</strong> — le semantic ranker d'AI Search trie les meilleurs chunks (après filtrage par groupe).</li>
+      <li><strong>Génération de la réponse</strong> — l'agent <code>gpt-5-mini</code> rédige en anglais à partir des seuls passages extraits, cite les sources et ajoute les liens fichiers.</li>
+    </ol>
+    <p class="note">≈ 10k tokens par question → quota <code>gpt-5-mini</code> à 500k TPM pour éviter les 429.</p>
+  </section>
+</main>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const css = getComputedStyle(document.documentElement);
+  const v = (n) => css.getPropertyValue(n).trim();
+  const map = {
+    AI_FILL: v("--cp-accent"), AI_FG: v("--cp-accent-fg"), SURF: v("--cp-surface"),
+    WARN: v("--cp-warning"), TXT: v("--cp-text"), AI_SOFT: v("--cp-highlight"),
+  };
+  document.querySelectorAll("pre.mermaid").forEach((el) => {
+    let t = el.textContent;
+    for (const [k, val] of Object.entries(map)) t = t.split(k).join(val);
+    el.textContent = t;
+  });
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: "base",
+    fontFamily: '"Segoe UI", Aptos, Calibri, sans-serif',
+    flowchart: { curve: "basis", htmlLabels: true },
+    themeVariables: {
+      background: v("--cp-surface"),
+      primaryColor: v("--cp-surface-soft"),
+      primaryTextColor: v("--cp-text"),
+      primaryBorderColor: v("--cp-border-strong"),
+      lineColor: v("--cp-text-muted"),
+      secondaryColor: v("--cp-bg-elevated"),
+      tertiaryColor: v("--cp-bg-elevated"),
+      clusterBkg: v("--cp-bg-elevated"),
+      clusterBorder: v("--cp-border"),
+      textColor: v("--cp-text"),
+      actorBkg: v("--cp-surface-soft"),
+      actorBorder: v("--cp-border-strong"),
+      actorTextColor: v("--cp-text"),
+      signalColor: v("--cp-text-muted"),
+      signalTextColor: v("--cp-text"),
+      noteBkgColor: v("--cp-surface-soft"),
+      noteTextColor: v("--cp-text"),
+      labelBoxBkgColor: v("--cp-surface-soft"),
+      labelTextColor: v("--cp-text"),
+      edgeLabelBackground: v("--cp-surface"),
+    },
+  });
+  await mermaid.run({ querySelector: "pre.mermaid" });
+</script>
+</body>
+</html>

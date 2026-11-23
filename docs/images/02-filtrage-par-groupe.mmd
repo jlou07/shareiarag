@@ -1,0 +1,7 @@
+flowchart LR
+    subgraph index["Index af-index-all"]
+        D1["admin-test.txt<br/>group_ids = [Groupe A]"]
+        D2["alluser-test.txt<br/>group_ids = [Groupe B]"]
+    end
+    QA["Requête avec le jeton de<br/>l'utilisateur A (membre de A)"] --> index
+    index --> RA["Résultat : admin-test.txt uniquement"]

@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor A as Utilisateur A
+    participant C as Console / Copilot
+    participant E as Entra ID
+    participant M as Serveur MCP
+    participant S as Azure AI Search
+    A->>C: question
+    C->>E: jeton pour api://mcp/access_as_user
+    E-->>C: jeton (aud = MCP, groupes de A)
+    C->>M: search(query) + jeton
+    M->>M: valide audience, émetteur, client autorisé
+    M->>E: OBO (assertion = identité managée fédérée)
+    E-->>M: jeton pour Search, au nom de A
+    M->>S: requête + jeton de A
+    S-->>M: documents filtrés par groupe
+    M-->>C: résultats + liens

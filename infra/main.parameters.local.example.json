@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceGroupName": {
+      "value": "rg-shareiarag"
+    },
+    "adminObjectIds": {
+      "value": "<object-id-admin-1>,<object-id-admin-2>"
+    },
+    "downloadAuthClientId": {
+      "value": "<download-function-entra-client-id>"
+    }
+  }
+}

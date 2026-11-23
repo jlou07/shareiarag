@@ -1,0 +1,2 @@
+Document de test synthetique pour le groupe A.
+Code de verification : ALPHA-4827.

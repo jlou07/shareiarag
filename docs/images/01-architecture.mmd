@@ -1,0 +1,26 @@
+flowchart LR
+    subgraph clients["Points d'entrée"]
+        U1["Console web<br/>(App Service)"]
+        U2["Agent Foundry"]
+        U3["Microsoft 365 Copilot<br/>(connecteur MCP)"]
+    end
+    subgraph rg["Groupe de ressources isolé"]
+        MCP["Serveur MCP<br/>(App Service)"]
+        S["Azure AI Search<br/>index + knowledge base"]
+        AOAI["Foundry<br/>gpt-5-mini, embeddings"]
+        F["Function de téléchargement<br/>(Flex Consumption)"]
+        FS[("Azure Files<br/>admin-share / alluser-share")]
+        KV["Key Vault"]
+    end
+    ENTRA["Microsoft Entra ID<br/>utilisateurs, groupes, 3 applications"]
+
+    U1 -->|jeton utilisateur| MCP
+    U2 -->|connexion MCP| S
+    U3 -->|jeton SSO| MCP
+    MCP -->|"OBO : jeton au nom de l'utilisateur"| S
+    S -->|indexeurs| FS
+    S -->|vectorisation, raisonnement| AOAI
+    U1 & U2 & U3 -.->|lien du document| F
+    F -->|contrôle du groupe puis lecture| FS
+    F & MCP -.-> KV
+    ENTRA -.-> MCP & F & U1

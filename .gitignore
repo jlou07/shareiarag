@@ -1,0 +1,23 @@
+.env
+cleanup-func/local.settings.json
+cleanup-func/.venv/
+cleanup-func/__pycache__/
+.copilot-azure/
+console/.venv/
+console/__pycache__/
+console/node_modules/
+console/static/app.bundle.js
+console/.env
+
+infra/test/runtime.parameters*.json
+!infra/test/runtime.parameters.example.json
+__pycache__/
+infra/test/.deploy-state-*.json
+infra/main.parameters.local.json
+infra/mcp/main.parameters.local.json
+.azure/
+download-func/build/
+
+# Notes and generated article exports (not part of the platform)
+issues_list.txt
+output/

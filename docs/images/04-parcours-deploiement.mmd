@@ -1,0 +1,21 @@
+flowchart TD
+    init["init<br/>suffixe aléatoire, noms globaux vérifiés"] --> entra
+    subgraph auto["deploy_test_env.py run --execute"]
+        entra["1. entra<br/>3 inscriptions, scopes, consentements"] --> deploy
+        deploy["2. deploy<br/>what-if contrôlé puis Bicep"] --> post
+        post["3. entra-post<br/>redirections, credential fédéré MCP"] --> secrets
+        secrets["4. secrets<br/>Key Vault, sans affichage"] --> deploy2
+        deploy2["5. deploy-secrets<br/>accès des applications aux secrets"] --> publish
+        publish["6. publish<br/>console, MCP, Function"] --> fixtures
+        fixtures["7. fixtures<br/>un document par partage"] --> search
+        search["8. search<br/>index, indexeurs, knowledge base"] --> foundry
+        foundry["9. foundry<br/>connexion MCP et agent"] --> smoke
+        smoke["10. smoke<br/>200 / 401 / 401"]
+    end
+    smoke --> teams
+    subgraph manual["Passe optionnelle Microsoft 365 Copilot"]
+        teams["Inscription SSO<br/>Teams Developer Portal"] --> sso["deploy_test_env.py sso"]
+        sso --> m365["Connecteur MCP dans le<br/>centre d'administration M365"]
+    end
+    m365 --> tests["Tests croisés<br/>utilisateur A / utilisateur B"]
+    smoke --> tests

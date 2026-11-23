@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "suffix": {
+      "value": "<3-8 lowercase letters or digits, unique per environment>"
+    },
+    "resourceGroupName": {
+      "value": "<new-resource-group-name>"
+    },
+    "location": {
+      "value": "francecentral"
+    },
+    "deployerObjectId": {
+      "value": "<deployer-object-id>"
+    },
+    "administratorObjectIds": {
+      "value": [
+        "<console-administrator-object-id>"
+      ]
+    },
+    "testUserObjectIds": {
+      "value": [
+        "<test-user-a-object-id>",
+        "<test-user-b-object-id>"
+      ]
+    },
+    "consoleClientId": {
+      "value": "<test-console-client-id>"
+    },
+    "downloadClientId": {
+      "value": "<test-download-client-id>"
+    },
+    "mcpClientId": {
+      "value": "<test-mcp-client-id>"
+    },
+    "groupAObjectId": {
+      "value": "<existing-security-group-a-object-id>"
+    },
+    "groupBObjectId": {
+      "value": "<existing-security-group-b-object-id>"
+    },
+    "mcpSsoAudience": {
+      "value": ""
+    }
+  }
+}
