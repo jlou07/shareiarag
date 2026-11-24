@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -44,6 +45,27 @@ class ParametersTests(unittest.TestCase):
         for name, entry in parameters.items():
             with self.subTest(name=name):
                 self.assertFalse(str(entry["value"]).startswith("<"))
+
+
+class KeyVaultReferenceTests(unittest.TestCase):
+    def test_refreshes_references_restarts_app_and_waits_until_resolved(self):
+        response = {"value": [{"name": "FILES_CONNECTION_ACCOUNT",
+                               "properties": {"status": "Resolved"}}]}
+        with patch.object(deploy, "az") as az, patch.object(deploy, "az_json", return_value=response):
+            deploy.refresh_key_vault_references("rg-x", "app-x", ("webapp", "restart"))
+
+        calls = [call.args for call in az.call_args_list]
+        self.assertIn(("webapp", "restart", "-g", "rg-x", "-n", "app-x"), calls)
+        self.assertTrue(any("configreferences/appsettings/refresh?api-version=2022-03-01" in args
+                            for call in calls for args in call))
+
+    def test_refresh_fails_if_key_vault_references_do_not_resolve(self):
+        response = {"value": [{"name": "FILES_CONNECTION_ACCOUNT",
+                               "properties": {"status": "AccessToKeyVaultDenied"}}]}
+        with patch.object(deploy, "az"), patch.object(deploy, "az_json", return_value=response), \
+                patch.object(deploy.time, "monotonic", side_effect=[0, 601]):
+            with self.assertRaisesRegex(TimeoutError, "AccessToKeyVaultDenied"):
+                deploy.refresh_key_vault_references("rg-x", "app-x", ("webapp", "restart"))
 
 
 if __name__ == "__main__":

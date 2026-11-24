@@ -66,6 +66,35 @@ def arm_post(path, body):
         os.unlink(handle.name)
 
 
+def refresh_key_vault_references(resource_group, site, restart_command):
+    subscription = az("account", "show", "--query", "id", "-o", "tsv")
+    site_path = (f"/subscriptions/{subscription}/resourceGroups/{resource_group}"
+                 f"/providers/Microsoft.Web/sites/{site}")
+    base_url = "https://management.azure.com" + site_path
+    az("rest", "--method", "post", "--url",
+       base_url + "/config/configreferences/appsettings/refresh?api-version=2022-03-01")
+    az(*restart_command, "-g", resource_group, "-n", site)
+
+    status_url = base_url + "/config/configreferences/appsettings?api-version=2023-12-01"
+    deadline = time.monotonic() + 600
+    while True:
+        response = az_json("rest", "--method", "get", "--url", status_url)
+        references = response.get("value", [])
+        if not references:
+            raise RuntimeError(f"No Key Vault app setting references were returned for {site}.")
+        statuses = {
+            item.get("name", "<unnamed>"): item.get("properties", {}).get("status", "Unknown")
+            for item in references
+        }
+        if all(status == "Resolved" for status in statuses.values()):
+            print(f"Key Vault references resolved for {site}.")
+            return
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Key Vault references for {site} did not resolve: {statuses}")
+        print(f"Waiting for Key Vault references on {site}: {statuses}")
+        time.sleep(20)
+
+
 # ---------- init ----------
 
 def names_available(subscription, env):
@@ -186,6 +215,8 @@ class Runner:
 
     def deploy_secrets(self):
         self.deployment("-p", "grantSecretAccess=true")
+        refresh_key_vault_references(self.env.resource_group, self.env.console_site, ("webapp", "restart"))
+        refresh_key_vault_references(self.env.resource_group, self.env.download_site, ("functionapp", "restart"))
 
     def publish(self):
         rg = self.env.resource_group
