@@ -266,8 +266,17 @@ def check_what_if(what_if, resource_group):
 
 def publish_webapp(resource_group, site, package):
     started = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
-    az("webapp", "deploy", "-g", resource_group, "-n", site, "--src-path", str(package), "--type", "zip",
-       "--async", "true")
+    # The site may still be restarting after the deploy-secrets pass and reject the first upload.
+    for attempt in range(1, 5):
+        try:
+            az("webapp", "deploy", "-g", resource_group, "-n", site, "--src-path", str(package), "--type", "zip",
+               "--async", "true")
+            break
+        except subprocess.CalledProcessError as error:
+            print(f"Upload to {site} failed (attempt {attempt}/4): {(error.stderr or '').strip()}")
+            if attempt == 4:
+                raise
+            time.sleep(60)
 
     def finished():
         latest = az_json("webapp", "log", "deployment", "list", "-g", resource_group, "-n", site,
