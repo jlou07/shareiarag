@@ -1062,6 +1062,14 @@ class SourceConnectionTests(unittest.TestCase):
         self.assertNotIn("private-connection", data)
         self.assertNotIn("connectionString", data)
 
+    def test_connection_creates_missing_standby_index_from_active_schema(self):
+        del self.gateway.indexes["af-index-all"]
+        self.add()
+        result = self.finish()
+        self.assertEqual(result["status"], "awaiting_access_verification", result.get("error"))
+        self.assertEqual(self.gateway.indexes["af-index-all"]["name"], "af-index-all")
+        self.assertNotIn("never-persist-this-secret", json.dumps(self.gateway.indexes["af-index-all"]))
+
     def test_same_share_name_in_other_account_has_independent_permissions(self):
         self.add()
         self.assertEqual(self.finish()["status"], "awaiting_access_verification")

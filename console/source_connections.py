@@ -150,6 +150,13 @@ def step(gateway, operation):
         index = slots[op["cursor"]]
         target = names(op["account"], op["share"], index)
         path = f"/skillsets/{target['skillset']}"
+        if gateway.search("GET", f"/indexes/{index}", expected=(200, 404)) is None:
+            # A fresh deployment has no standby index until the first rebuild; skillset projections need it.
+            from operations import sanitized_schema
+
+            schema = sanitized_schema(gateway.search("GET", f"/indexes/{op['activeIndex']}"))
+            schema["name"] = index
+            gateway.search("PUT", f"/indexes/{index}", schema, {"If-None-Match": "*"}, (201,))
         template = op["template"]["skillset"] if op.get("template") else gateway.search("GET", f"/skillsets/{op['templateSkillset']}")
         desired = skillset(template, target["skillset"], index, op["groupId"], op["share"])
         current = gateway.search("GET", path, expected=(200, 404))

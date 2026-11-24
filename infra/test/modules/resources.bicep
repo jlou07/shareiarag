@@ -9,6 +9,9 @@ param mcpClientId string
 param mcpSsoAudience string
 param groupAObjectId string
 param groupBObjectId string
+param downloadShareGroups string
+param downloadExtraSettings object
+param consoleExtraSettings object
 param searchName string
 param foundryAccountName string
 param foundryProjectName string
@@ -28,6 +31,8 @@ param mcpInsightsName string
 // Microsoft Enterprise Token Store: the well-known client used by Microsoft 365 Copilot connectors for SSO.
 var m365TokenStoreClientId = 'ab3be6b7-f5df-413d-ac2d-abf1e3fd9c0b'
 var m365SsoEnabled = !empty(mcpSsoAudience)
+var consoleExtraAppSettings = [for item in items(consoleExtraSettings): { name: item.key, value: item.value }]
+var downloadExtraAppSettings = [for item in items(downloadExtraSettings): { name: item.key, value: item.value }]
 
 resource log 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logName
@@ -303,7 +308,7 @@ resource consoleApp 'Microsoft.Web/sites@2024-11-01' = {
       healthCheckPath: '/healthz'
       http20Enabled: true
       appCommandLine: 'gunicorn --bind=0.0.0.0:8000 app:app'
-      appSettings: [
+      appSettings: concat([
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true' }
         { name: 'ENABLE_ORYX_BUILD', value: 'true' }
         { name: 'ORYX_DISABLE_COMPRESSION', value: 'true' }
@@ -331,8 +336,9 @@ resource consoleApp 'Microsoft.Web/sites@2024-11-01' = {
         { name: 'STATE_CONTAINER_NAME', value: consoleContainer.name }
         { name: 'MCP_APP_NAME', value: mcpAppName }
         { name: 'HOSTING_PLAN_ID', value: webPlan.id }
-        { name: 'GROUP_DIRECTORY_ENABLED', value: 'false' }
-      ]
+        // deploy_test_env.py grants Group.ReadBasic.All to the console identity (entra-post step).
+        { name: 'GROUP_DIRECTORY_ENABLED', value: 'true' }
+      ], consoleExtraAppSettings)
     }
   }
 }
@@ -397,14 +403,16 @@ resource downloadApp 'Microsoft.Web/sites@2024-11-01' = {
     siteConfig: {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
-      appSettings: [
+      appSettings: concat([
         { name: 'AzureWebJobsStorage__accountName', value: state.name }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: functionInsights.properties.ConnectionString }
         { name: 'FILES_ACCOUNT_NAME', value: files.name }
         { name: 'FILES_ACCOUNT_KEY', value: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=files-connection-${files.name})' }
-        { name: 'SHARE_GROUPS', value: 'admin-share=${groupAObjectId};alluser-share=${groupBObjectId}' }
+        { name: 'SHARE_GROUPS', value: empty(downloadShareGroups) ? 'admin-share=${groupAObjectId};alluser-share=${groupBObjectId}' : downloadShareGroups }
         { name: 'MICROSOFT_PROVIDER_AUTHENTICATION_SECRET', value: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=download-provider-secret)' }
-      ]
+        // The published download-func supports multiple accounts; the console requires this marker to add sources.
+        { name: 'MULTI_ACCOUNT_SOURCES_VERSION', value: '1' }
+      ], downloadExtraAppSettings)
     }
   }
 }

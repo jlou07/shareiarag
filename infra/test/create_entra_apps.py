@@ -3,7 +3,8 @@
 Steps (preview by default, --execute to apply):
   create       before the first deployment: register the console, MCP and download apps,
                their service principals and admin consents, then write the client IDs to the parameters file.
-  post-deploy  after the deployment: add the redirect URIs of the real hosts and the MCP federated credential.
+  post-deploy  after the deployment: add the redirect URIs of the real hosts and the MCP federated credential,
+               and grant the console identity Microsoft Graph Group.ReadBasic.All for group names.
   sso          optional: wire the Teams Developer Portal SSO registration for the Microsoft 365 Copilot connector.
 """
 
@@ -11,6 +12,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import uuid
 
@@ -19,6 +21,7 @@ import testenv
 
 
 GRAPH = "https://graph.microsoft.com/v1.0"
+GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000"
 # Azure AI Search first-party application and its delegated user_impersonation scope (identical in every tenant).
 SEARCH_APP_ID = "880da380-985e-4198-81b9-e05b1cc53158"
 SEARCH_SCOPE_ID = "a4165a31-5d9e-4120-bd1e-9d88c66fd3b8"
@@ -234,6 +237,29 @@ def post_deploy(env, execute):
         graph("POST", f"/applications/{mcp['id']}/federatedIdentityCredentials",
               federated_credential_body(env, tenant, principal))
     print("Redirect URIs and federated credential configured.")
+    grant_group_directory(env)
+
+
+def grant_group_directory(env):
+    """Let the console search group names (Group.ReadBasic.All, no member access); needed to pick a new group."""
+    console_principal = test._az("webapp", "identity", "show", "-g", env.resource_group, "-n", env.console_site,
+                                 "--query", "principalId", "-o", "tsv")
+    graph_sp = graph("GET", f"/servicePrincipals(appId='{GRAPH_APP_ID}')?$select=id,appRoles")
+    role = next(item["id"] for item in graph_sp["appRoles"]
+                if item["value"] == "Group.ReadBasic.All" and "Application" in item["allowedMemberTypes"])
+    assignments = graph("GET", f"/servicePrincipals/{console_principal}/appRoleAssignments")["value"]
+    if any(item["appRoleId"] == role and item["resourceId"] == graph_sp["id"] for item in assignments):
+        print("Console group directory permission already granted.")
+        return
+    try:
+        graph("POST", f"/servicePrincipals/{console_principal}/appRoleAssignments",
+              {"principalId": console_principal, "resourceId": graph_sp["id"], "appRoleId": role})
+    except subprocess.CalledProcessError as error:
+        print("WARNING: could not grant Microsoft Graph Group.ReadBasic.All to the console identity "
+              f"({(error.stderr or '').strip()[:200]}). Group names and new groups stay unavailable in the console "
+              "until a Privileged Role Administrator grants it; then rerun: deploy_test_env.py run --from entra-post")
+        return
+    print("Console group directory permission granted (Group.ReadBasic.All).")
 
 
 def sso(env, params, app_id_uri, execute):

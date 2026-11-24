@@ -30,7 +30,7 @@ EXAMPLE = HERE / "runtime.parameters.example.json"
 STEPS = (
     ("entra", "Create the three Entra app registrations"),
     ("deploy", "Deploy the Bicep template (what-if guarded)"),
-    ("entra-post", "Add redirect URIs and the MCP federated credential"),
+    ("entra-post", "Add redirect URIs, the MCP federated credential and the console group lookup permission"),
     ("secrets", "Create the Files and download secrets in Key Vault"),
     ("deploy-secrets", "Redeploy with access to the secrets"),
     ("publish", "Build and publish the console, MCP and Function packages"),
@@ -185,7 +185,7 @@ class Runner:
     def deployment(self, *extra):
         parameters = json.loads(self.params.read_text(encoding="utf-8"))["parameters"]
         common = ("-n", f"shareiarag-test-{self.env.suffix}", "-l", parameters["location"]["value"],
-                  "-f", str(HERE / "main.bicep"), "-p", str(self.params), *extra)
+                  "-f", str(HERE / "main.bicep"), "-p", str(self.params), *extra, *preserved_settings(self.env))
         what_if = az_json("deployment", "sub", "what-if", *common, "--no-pretty-print")
         check_what_if(what_if, self.env.resource_group)
         print("What-if: " + ", ".join(f"{k} {v}" for k, v in summarize(what_if).items()))
@@ -271,6 +271,42 @@ class Runner:
     def host(self, site):
         return az("resource", "show", "-g", self.env.resource_group, "-n", site, "--resource-type",
                   "Microsoft.Web/sites", "--query", "properties.defaultHostName", "-o", "tsv")
+
+
+def select_preserved(console_settings, download_settings, files_account):
+    """Return the Bicep parameters that keep sources added by the console across a redeployment."""
+    base_connection = f"FILES_CONNECTION_{files_account.upper()}"
+    console = {key: value for key, value in console_settings.items()
+               if key.startswith("FILES_CONNECTION_") and key != base_connection}
+    download = {key: value for key, value in download_settings.items() if key.startswith("FILES_ACCOUNT_KEY_")}
+    for key, value in {**console, **download}.items():
+        # Deployment parameters are visible in the deployment history: only Key Vault references are allowed.
+        if not value.startswith("@Microsoft.KeyVault("):
+            raise RuntimeError(f"App setting {key} is not a Key Vault reference; fix it before redeploying.")
+    arguments = []
+    if download_settings.get("SHARE_GROUPS"):
+        arguments += ["-p", f"downloadShareGroups={download_settings['SHARE_GROUPS']}"]
+    if download:
+        arguments += ["-p", "downloadExtraSettings=" + json.dumps(download)]
+    if console:
+        arguments += ["-p", "consoleExtraSettings=" + json.dumps(console)]
+    return arguments
+
+
+def preserved_settings(env):
+    if az("group", "exists", "-n", env.resource_group) != "true":
+        return []
+    sites = set(az("resource", "list", "-g", env.resource_group, "--resource-type", "Microsoft.Web/sites",
+                   "--query", "[].name", "-o", "tsv").split())
+
+    def settings(kind, site):
+        if site not in sites:
+            return {}
+        rows = az_json(kind, "config", "appsettings", "list", "-g", env.resource_group, "-n", site)
+        return {row["name"]: row["value"] or "" for row in rows or []}
+
+    return select_preserved(settings("webapp", env.console_site), settings("functionapp", env.download_site),
+                            env.files)
 
 
 def summarize(what_if):

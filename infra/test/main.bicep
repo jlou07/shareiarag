@@ -52,6 +52,11 @@ param groupBObjectId string
 @description('Set to true only after both test secrets have been created in the test vault.')
 param grantSecretAccess bool = false
 
+@description('Settings added by the console when sources are connected; deploy_test_env.py reads them from the live apps so a redeployment keeps them.')
+param downloadShareGroups string = ''
+param downloadExtraSettings object = {}
+param consoleExtraSettings object = {}
+
 var searchName = 'srch-shareiarag-test-${suffix}'
 var foundryAccountName = 'aif-shareiarag-test-${suffix}'
 var foundryProjectName = 'proj-shareiarag-test-${suffix}'
@@ -98,6 +103,9 @@ module resources './modules/resources.bicep' = {
     mcpSsoAudience: mcpSsoAudience
     groupAObjectId: groupAObjectId
     groupBObjectId: groupBObjectId
+    downloadShareGroups: downloadShareGroups
+    downloadExtraSettings: downloadExtraSettings
+    consoleExtraSettings: consoleExtraSettings
     searchName: searchName
     foundryAccountName: foundryAccountName
     foundryProjectName: foundryProjectName
